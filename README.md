@@ -1,6 +1,6 @@
 # Azure Test Plans Automation Stats
 
-This tool connects to Azure DevOps to fetch test automation statistics for specified Test Plans. It aggregates data by "root" category (the top-level folders in the plan) and appends a weekly snapshot to a CSV file.
+This tool connects to Azure DevOps to fetch test automation statistics for specified Test Plans, aggregates data by "root" category (the top-level folders in the plan), and generates comprehensive Excel dashboards with visual trend analysis. Historical data is maintained in CSV files for week-over-week tracking.
 
 ## Prerequisites
 
@@ -81,20 +81,23 @@ python generate_charts.py
 ### What it generates
 
 Creates two Excel files (one per test plan) with multiple sheets:
-- **Overall Progress** - Stacked area chart showing automation growth over time
-- **Module Trends** - Line chart tracking automated tests per module
-- **Current Status** - Horizontal bar chart comparing latest week's status by module
+- **Overall Progress** - Stacked area chart showing automation growth over time + line chart tracking overall automation percentage
+- **Module Trends** - Stacked column chart tracking automated test counts per module
+- **Module % Trends** - Line chart showing automation percentage growth per module over time
+- **Current Status** - Horizontal bar chart comparing latest week's status by module with percentage labels
 - **Raw Data** - Complete dataset with calculated percentages
 
 Files are named with timestamp: `dashboard_regression_YYYYMMDD.xlsx` and `dashboard_automations_YYYYMMDD.xlsx`
 
 ### Dashboard Features
 
-- **Automatic calculations**: Automation percentage per module
-- **Professional formatting**: Styled headers and auto-sized columns
-- **Multiple visualizations**: Area, line, and bar charts
-- **Weekly trend tracking**: Shows progress over time
-- **Module comparison**: Identifies high and low performing areas
+- **Automatic calculations**: Automation percentage per module and overall
+- **Professional formatting**: Styled headers, auto-sized columns, and vibrant color schemes
+- **Multiple visualizations**: Area charts, line charts with markers, and stacked bar charts
+- **Percentage tracking**: Dedicated charts showing % growth trends by module and overall
+- **Weekly trend analysis**: Track progress over time with clear axis labels and values
+- **Module comparison**: Identify high and low performing areas with visual indicators
+- **Data labels**: Percentage values displayed on charts for easy reading
 
 ### Scheduling
 
