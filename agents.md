@@ -48,11 +48,17 @@ This document describes the automation agents and components used in the stats-a
 
 ### Chart Generator (`generate_charts.py`)
 - Reads CSV files and generates Excel dashboards
-- Creates multiple chart types (stacked area, line, horizontal bar)
-- Provides weekly trend analysis
+- Creates multiple chart types:
+  - Stacked area charts for overall progress
+  - Line charts with markers for percentage trends
+  - Stacked column charts for module comparisons
+  - Horizontal bar charts for current status
+- Provides weekly trend analysis with visible axis labels and values
+- Tracks automation percentage growth per module and overall
 - Compares module performance
 - Calculates automation percentages
-- Produces professional formatted reports
+- Produces professional formatted reports with vibrant color schemes
+- Adds data labels showing percentages on charts
 
 ## Scheduling
 
@@ -93,11 +99,28 @@ Creates timestamped Excel files:
 - `dashboard_regression_YYYYMMDD.xlsx`
 - `dashboard_automations_YYYYMMDD.xlsx`
 
-Each dashboard includes:
-- Overall automation progress (stacked area chart)
-- Module trends over time (line chart)
-- Current status comparison (horizontal bar chart)
-- Raw data with calculated percentages
+Each dashboard includes 5 sheets:
+
+1. **Overall Progress**
+   - Stacked area chart showing test count growth (automated, planned, not automated)
+   - Line chart tracking overall automation percentage over time
+   
+2. **Module Trends**
+   - Stacked column chart showing automated test counts per module
+   - Y-axis with visible numbers for precise reading
+   
+3. **Module % Trends**
+   - Line chart showing automation percentage growth per module
+   - Multiple colored lines with markers for each module
+   - Y-axis labels showing percentage values
+   
+4. **Current Status**
+   - Horizontal stacked bar chart comparing latest week by module
+   - Module names on vertical axis
+   - Percentage labels displayed next to each bar
+   
+5. **Raw Data**
+   - Complete dataset with calculated percentages
 
 ## Error Handling
 
