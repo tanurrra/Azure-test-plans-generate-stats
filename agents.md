@@ -40,10 +40,19 @@ This document describes the automation agents and components used in the stats-a
 - Produces per-suite statistics
 
 ### CSV Writer (`csv_writer.py`)
-- Manages output CSV file
+- Manages output CSV files
 - Creates headers on first run
 - Appends new rows for each execution
 - Maintains historical data
+- Supports separate files for different test plans
+
+### Chart Generator (`generate_charts.py`)
+- Reads CSV files and generates Excel dashboards
+- Creates multiple chart types (stacked area, line, horizontal bar)
+- Provides weekly trend analysis
+- Compares module performance
+- Calculates automation percentages
+- Produces professional formatted reports
 
 ## Scheduling
 
@@ -67,9 +76,28 @@ schedules:
 
 ## Output
 
-- **File**: `automation_stats.csv`
+- **File**: `automation_stats.csv` (for E2E - V5 regression test plan)
+- **File**: `automation_stats_automations.csv` (for E2E - Automations test plan)
 - **Format**: One row per root suite per plan per run
 - **Columns**: date, plan_id, plan_name, root_suite_id, root_suite_name, total_cases, automated, planned, not_automated
+
+## Dashboards
+
+Generate Excel dashboards with visualizations:
+
+```bash
+python generate_charts.py
+```
+
+Creates timestamped Excel files:
+- `dashboard_regression_YYYYMMDD.xlsx`
+- `dashboard_automations_YYYYMMDD.xlsx`
+
+Each dashboard includes:
+- Overall automation progress (stacked area chart)
+- Module trends over time (line chart)
+- Current status comparison (horizontal bar chart)
+- Raw data with calculated percentages
 
 ## Error Handling
 

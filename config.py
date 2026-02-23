@@ -18,7 +18,8 @@ class AzureConfig:
         regression_plan_id: Identifier of the regression test plan.
         release_plan_id: Identifier of the release test plan.
         automation_status_field: Reference name of the Automation Status field.
-        csv_path: Absolute or relative path to the output CSV file.
+        csv_path: Absolute or relative path to the output CSV file for regression plan.
+        automations_csv_path: Absolute or relative path to the output CSV file for automations plan.
     """
 
     organization_url: str
@@ -28,6 +29,7 @@ class AzureConfig:
     release_plan_id: int
     automation_status_field: str
     csv_path: str
+    automations_csv_path: str
 
     @property
     def plan_ids(self) -> List[int]:
@@ -69,7 +71,8 @@ def load_config() -> AzureConfig:
         ADO_PLAN_ID_REGRESSION: Identifier of the regression test plan.
         ADO_PLAN_ID_RELEASE: Identifier of the release test plan.
         ADO_AUTOMATION_STATUS_FIELD: Reference name of the Automation Status field.
-        ADO_AUTOMATION_CSV_PATH: Path to the CSV file for storing aggregated results.
+        ADO_AUTOMATION_CSV_PATH: Path to the CSV file for storing regression plan results.
+        ADO_AUTOMATIONS_CSV_PATH: Path to the CSV file for storing automations plan results.
 
     Returns:
         Loaded AzureConfig instance.
@@ -83,6 +86,7 @@ def load_config() -> AzureConfig:
     regression_plan_id_raw = _require_env("ADO_PLAN_ID_REGRESSION")
     release_plan_id_raw = _require_env("ADO_PLAN_ID_RELEASE")
     csv_path = _require_env("ADO_AUTOMATION_CSV_PATH")
+    automations_csv_path = _require_env("ADO_AUTOMATIONS_CSV_PATH")
 
     automation_status_field = os.getenv("ADO_AUTOMATION_STATUS_FIELD", "Custom.AutomationStatus").strip()
     if not automation_status_field:
@@ -106,6 +110,7 @@ def load_config() -> AzureConfig:
         personal_access_token=pat,
         regression_plan_id=regression_plan_id,
         release_plan_id=release_plan_id,
+        automations_csv_path=automations_csv_path,
         automation_status_field=automation_status_field,
         csv_path=csv_path,
     )

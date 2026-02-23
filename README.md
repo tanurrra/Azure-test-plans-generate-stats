@@ -12,7 +12,7 @@ This tool connects to Azure DevOps to fetch test automation statistics for speci
 
 1. **Install dependencies**:
    ```bash
-   pip install requests python-dotenv
+   pip install -r requirements.txt
    ```
    *(Or use a virtual environment if preferred)*
 
@@ -30,11 +30,15 @@ This tool connects to Azure DevOps to fetch test automation statistics for speci
    ADO_PAT=your_pat_here
    
    # Test Plan IDs to process
-   ADO_PLAN_ID_REGRESSION=228942
-   ADO_PLAN_ID_RELEASE=230474
+   ADO_PLAN_ID_REGRESSION=230474
+   ADO_PLAN_ID_RELEASE=228942
    
-   # Output CSV Path (absolute or relative)
-   ADO_AUTOMATION_CSV_PATH=C:\Users\tatyana.velikanova\SOne\stats-automation\automation_stats.csv
+   # Output CSV Paths (absolute or relative)
+   # Regression plan data will be written to this file
+   ADO_AUTOMATION_CSV_PATH=automation_stats.csv
+   
+   # Automations plan data will be written to this separate file
+   ADO_AUTOMATIONS_CSV_PATH=automation_stats_automations.csv
    
    # (Optional) Custom Automation Status Field Name
    # Default is "Custom.AutomationStatus"
@@ -59,8 +63,38 @@ python main.py
    - Recursively collects all test cases under each category.
    - Fetches the `Automation Status` for every test case.
    - Counts "Automated", "Planned", and "Not Automated".
-3. Appends a new set of rows to the CSV file with strict columns:
-   - `date`, `plan_id`, `root_suite_id`, `root_suite_name`, `total_cases`, `automated`, `planned`, `not_automated`
+3. Appends results to separate CSV files:
+   - **Regression plan** (E2E - V5) data → `automation_stats.csv`
+   - **Automations plan** (E2E - Automations) data → `automation_stats_automations.csv`
+   
+   Each file contains columns:
+   - `date`, `plan_id`, `plan_name`, `root_suite_id`, `root_suite_name`, `total_cases`, `automated`, `planned`, `not_automated`
+
+## Generating Excel Dashboards
+
+After collecting data, you can generate interactive Excel dashboards with charts:
+
+```bash
+python generate_charts.py
+```
+
+### What it generates
+
+Creates two Excel files (one per test plan) with multiple sheets:
+- **Overall Progress** - Stacked area chart showing automation growth over time
+- **Module Trends** - Line chart tracking automated tests per module
+- **Current Status** - Horizontal bar chart comparing latest week's status by module
+- **Raw Data** - Complete dataset with calculated percentages
+
+Files are named with timestamp: `dashboard_regression_YYYYMMDD.xlsx` and `dashboard_automations_YYYYMMDD.xlsx`
+
+### Dashboard Features
+
+- **Automatic calculations**: Automation percentage per module
+- **Professional formatting**: Styled headers and auto-sized columns
+- **Multiple visualizations**: Area, line, and bar charts
+- **Weekly trend tracking**: Shows progress over time
+- **Module comparison**: Identifies high and low performing areas
 
 ### Scheduling
 
@@ -68,6 +102,10 @@ To run this weekly, configure a scheduled task (Windows Task Scheduler) or a CI/
 
 ## CSV Output Format
 
-| date       | plan_id | root_suite_id | root_suite_name     | total_cases | automated | planned | not_automated |
-|------------|---------|---------------|---------------------|-------------|-----------|---------|---------------|
-| 2026-02-16 | 228942  | 1045          | Vendor and profiles | 150         | 120       | 10      | 20            |
+Each test plan writes to its own CSV file:
+- **automation_stats.csv** - Contains data for regression test plan (E2E - V5)
+- **automation_stats_automations.csv** - Contains data for automations test plan (E2E - Automations)
+
+| date       | plan_id | plan_name | root_suite_id | root_suite_name     | total_cases | automated | planned | not_automated |
+|------------|---------|-----------|---------------|---------------------|-------------|-----------|---------|---------------|
+| 2026-02-16 | 230474  | E2E - V5  | 230476        | Commerce            | 239         | 9         | 1       | 229           |
