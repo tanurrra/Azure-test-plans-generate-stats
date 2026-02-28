@@ -1,7 +1,7 @@
 .venv/
 __pycache__/
 automation_stats.csv
-automation_stats_automations.csv
+automation_stats_release.csv
 dashboard_*.xlsx
 *.pyc
 .env

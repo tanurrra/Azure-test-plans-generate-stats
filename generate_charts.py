@@ -461,7 +461,7 @@ def main() -> None:
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
     regression_csv = os.path.join(script_dir, "automation_stats.csv")
-    automations_csv = os.path.join(script_dir, "automation_stats_automations.csv")
+    release_csv = os.path.join(script_dir, "automation_stats_release.csv")
 
     timestamp = datetime.now().strftime("%Y%m%d")
 
@@ -470,9 +470,9 @@ def main() -> None:
         generate_dashboard(regression_csv, output_path, "E2E - V5 Regression")
         print(f"Generated: {output_path}")
 
-    if os.path.exists(automations_csv):
-        output_path = os.path.join(script_dir, f"dashboard_automations_{timestamp}.xlsx")
-        generate_dashboard(automations_csv, output_path, "E2E - Automations")
+    if os.path.exists(release_csv):
+        output_path = os.path.join(script_dir, f"dashboard_release_{timestamp}.xlsx")
+        generate_dashboard(release_csv, output_path, "E2E - Release")
         print(f"Generated: {output_path}")
 
 

@@ -21,7 +21,7 @@ def run() -> None:
     client = AzureDevOpsClient(config)
 
     regression_aggregations: List[SuiteAggregation] = []
-    automations_aggregations: List[SuiteAggregation] = []
+    release_aggregations: List[SuiteAggregation] = []
     plan_names: dict[int, str] = {}
     
     for plan_id in config.plan_ids:
@@ -37,7 +37,7 @@ def run() -> None:
             if plan_id == config.regression_plan_id:
                 regression_aggregations.extend(plan_aggregations)
             else:
-                automations_aggregations.extend(plan_aggregations)
+                release_aggregations.extend(plan_aggregations)
         except Exception:
             logging.exception("Failed to aggregate statistics for plan %s.", plan_id)
 
@@ -48,12 +48,12 @@ def run() -> None:
     else:
         logging.warning("No regression aggregations produced; regression CSV file will not be updated.")
 
-    # Write automations plan data to separate CSV file
-    if automations_aggregations:
-        logging.info("Appending %s rows to automations CSV at '%s'.", len(automations_aggregations), config.automations_csv_path)
-        append_aggregations_to_csv(config.automations_csv_path, automations_aggregations, run_date=date.today(), plan_names=plan_names)
+    # Write release plan data to separate CSV file
+    if release_aggregations:
+        logging.info("Appending %s rows to release CSV at '%s'.", len(release_aggregations), config.release_csv_path)
+        append_aggregations_to_csv(config.release_csv_path, release_aggregations, run_date=date.today(), plan_names=plan_names)
     else:
-        logging.warning("No automations aggregations produced; automations CSV file will not be updated.")
+        logging.warning("No release aggregations produced; release CSV file will not be updated.")
 
     logging.info("Aggregation and CSV update completed successfully.")
 

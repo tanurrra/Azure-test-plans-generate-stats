@@ -83,7 +83,7 @@ schedules:
 ## Output
 
 - **File**: `automation_stats.csv` (for E2E - V5 regression test plan)
-- **File**: `automation_stats_automations.csv` (for E2E - Automations test plan)
+- **File**: `automation_stats_release.csv` (for E2E - Release test plan)
 - **Format**: One row per root suite per plan per run
 - **Columns**: date, plan_id, plan_name, root_suite_id, root_suite_name, total_cases, automated, planned, not_automated
 
@@ -97,7 +97,7 @@ python generate_charts.py
 
 Creates timestamped Excel files:
 - `dashboard_regression_YYYYMMDD.xlsx`
-- `dashboard_automations_YYYYMMDD.xlsx`
+- `dashboard_release_YYYYMMDD.xlsx`
 
 Each dashboard includes 5 sheets:
 

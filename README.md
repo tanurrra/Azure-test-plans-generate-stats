@@ -37,8 +37,8 @@ This tool connects to Azure DevOps to fetch test automation statistics for speci
    # Regression plan data will be written to this file
    ADO_AUTOMATION_CSV_PATH=automation_stats.csv
    
-   # Automations plan data will be written to this separate file
-   ADO_AUTOMATIONS_CSV_PATH=automation_stats_automations.csv
+   # Release plan data will be written to this separate file
+   ADO_RELEASE_CSV_PATH=automation_stats_release.csv
    
    # (Optional) Custom Automation Status Field Name
    # Default is "Custom.AutomationStatus"
@@ -65,7 +65,7 @@ python main.py
    - Counts "Automated", "Planned", and "Not Automated".
 3. Appends results to separate CSV files:
    - **Regression plan** (E2E - V5) data → `automation_stats.csv`
-   - **Automations plan** (E2E - Automations) data → `automation_stats_automations.csv`
+   - **Release plan** (E2E - Release) data → `automation_stats_release.csv`
    
    Each file contains columns:
    - `date`, `plan_id`, `plan_name`, `root_suite_id`, `root_suite_name`, `total_cases`, `automated`, `planned`, `not_automated`
@@ -87,7 +87,7 @@ Creates two Excel files (one per test plan) with multiple sheets:
 - **Current Status** - Horizontal bar chart comparing latest week's status by module with percentage labels
 - **Raw Data** - Complete dataset with calculated percentages
 
-Files are named with timestamp: `dashboard_regression_YYYYMMDD.xlsx` and `dashboard_automations_YYYYMMDD.xlsx`
+Files are named with timestamp: `dashboard_regression_YYYYMMDD.xlsx` and `dashboard_release_YYYYMMDD.xlsx`
 
 ### Dashboard Features
 
@@ -107,7 +107,7 @@ To run this weekly, configure a scheduled task (Windows Task Scheduler) or a CI/
 
 Each test plan writes to its own CSV file:
 - **automation_stats.csv** - Contains data for regression test plan (E2E - V5)
-- **automation_stats_automations.csv** - Contains data for automations test plan (E2E - Automations)
+- **automation_stats_release.csv** - Contains data for release test plan (E2E - Release)
 
 | date       | plan_id | plan_name | root_suite_id | root_suite_name     | total_cases | automated | planned | not_automated |
 |------------|---------|-----------|---------------|---------------------|-------------|-----------|---------|---------------|
