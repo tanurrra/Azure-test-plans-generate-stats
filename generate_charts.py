@@ -10,6 +10,7 @@ import pandas as pd
 from openpyxl import Workbook
 from openpyxl.chart import AreaChart, BarChart, LineChart, Reference
 from openpyxl.chart.label import DataLabelList
+from openpyxl.chart.layout import Layout, ManualLayout
 from openpyxl.chart.marker import Marker
 from openpyxl.chart.shapes import GraphicalProperties
 from openpyxl.drawing.colors import ColorChoice
@@ -44,8 +45,9 @@ def create_overall_summary(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame grouped by date with summed statistics.
     """
+    df_sorted = df.sort_values("date")
     summary = (
-        df.groupby("date_formatted")
+        df_sorted.groupby("date_formatted", sort=False)
         .agg({"automated": "sum", "planned": "sum", "not_automated": "sum", "total_cases": "sum"})
         .reset_index()
     )
@@ -63,7 +65,10 @@ def create_module_trends(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         Pivoted DataFrame with dates as rows and modules as columns.
     """
-    pivot = df.pivot_table(index="date_formatted", columns="root_suite_name", values="automated", aggfunc="sum", fill_value=0)
+    df_sorted = df.sort_values("date")
+    chronological_dates = df_sorted["date_formatted"].unique()
+    pivot = df_sorted.pivot_table(index="date_formatted", columns="root_suite_name", values="automated", aggfunc="sum", fill_value=0)
+    pivot = pivot.reindex(chronological_dates)
     pivot = pivot.reset_index()
     pivot.rename(columns={"date_formatted": "date"}, inplace=True)
     return pivot
@@ -93,10 +98,25 @@ def create_module_pct_trends(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         Pivoted DataFrame with dates as rows and modules as columns showing percentages.
     """
-    pivot = df.pivot_table(index="date_formatted", columns="root_suite_name", values="automation_pct", aggfunc="mean", fill_value=0)
+    df_sorted = df.sort_values("date")
+    chronological_dates = df_sorted["date_formatted"].unique()
+    pivot = df_sorted.pivot_table(index="date_formatted", columns="root_suite_name", values="automation_pct", aggfunc="mean", fill_value=0)
+    pivot = pivot.reindex(chronological_dates)
     pivot = pivot.reset_index()
     pivot.rename(columns={"date_formatted": "date"}, inplace=True)
     return pivot
+
+
+def _apply_chart_margins(chart: Any) -> None:
+    """Apply plot area layout and reserve extra space on the right for legends."""
+    chart.plot_area.layout = Layout(
+        manualLayout=ManualLayout(
+            x=0.08,
+            y=0.05,
+            w=0.646,
+            h=0.85,
+        )
+    )
 
 
 def add_stacked_area_chart(ws: Any, data_range: str, title: str, position: str) -> None:
@@ -115,7 +135,7 @@ def add_stacked_area_chart(ws: Any, data_range: str, title: str, position: str) 
     chart.y_axis.title = "Number of Tests"
     chart.grouping = "stacked"
     chart.height = 10
-    chart.width = 20
+    chart.width = 26
 
     data = Reference(ws, min_col=2, min_row=1, max_col=4, max_row=ws.max_row)
     dates = Reference(ws, min_col=1, min_row=2, max_row=ws.max_row)
@@ -145,6 +165,7 @@ def add_stacked_area_chart(ws: Any, data_range: str, title: str, position: str) 
             series.graphicalProperties.solidFill = color_fill
             series.graphicalProperties.line = line_props
 
+    _apply_chart_margins(chart)
     ws.add_chart(chart, position)
 
 
@@ -165,7 +186,7 @@ def add_line_chart(ws: Any, max_col: int, title: str, position: str) -> None:
     chart.x_axis.title = "Date"
     chart.y_axis.title = "Automated Tests"
     chart.height = 10
-    chart.width = 20
+    chart.width = 26
 
     data = Reference(ws, min_col=2, min_row=1, max_col=max_col, max_row=ws.max_row)
     dates = Reference(ws, min_col=1, min_row=2, max_row=ws.max_row)
@@ -197,6 +218,7 @@ def add_line_chart(ws: Any, max_col: int, title: str, position: str) -> None:
         series.graphicalProperties = GraphicalProperties()
         series.graphicalProperties.solidFill = color_fill
 
+    _apply_chart_margins(chart)
     ws.add_chart(chart, position)
 
 
@@ -214,7 +236,7 @@ def add_horizontal_bar_chart(ws: Any, title: str, position: str) -> None:
     chart.title = title
     chart.style = 11
     chart.height = 12
-    chart.width = 18
+    chart.width = 23.4
 
     data = Reference(ws, min_col=3, min_row=1, max_col=5, max_row=ws.max_row)
     categories = Reference(ws, min_col=1, min_row=2, max_row=ws.max_row)
@@ -234,12 +256,13 @@ def add_horizontal_bar_chart(ws: Any, title: str, position: str) -> None:
             series.graphicalProperties = GraphicalProperties()
             series.graphicalProperties.solidFill = color_fill
 
+    _apply_chart_margins(chart)
     ws.add_chart(chart, position)
     
     # Add percentage labels as text in cells next to the chart
     # Position them to the right of where bars end
     chart_col = ord(position[0]) - ord('A') + 1
-    label_col = chart_col + 18  # Position after chart width
+    label_col = chart_col + int(chart.width) + 1  # Position after chart width
     
     # Add header
     ws.cell(row=1, column=label_col, value="Automation %")
@@ -269,7 +292,7 @@ def add_pct_line_chart(ws: Any, max_col: int, title: str, position: str, y_axis_
     chart.x_axis.title = "Date"
     chart.y_axis.title = y_axis_title
     chart.height = 10
-    chart.width = 20
+    chart.width = 26
 
     data = Reference(ws, min_col=2, min_row=1, max_col=max_col, max_row=ws.max_row)
     dates = Reference(ws, min_col=1, min_row=2, max_row=ws.max_row)
@@ -311,6 +334,7 @@ def add_pct_line_chart(ws: Any, max_col: int, title: str, position: str, y_axis_
         marker_line.solidFill = color_fill
         series.marker.graphicalProperties.line = marker_line
 
+    _apply_chart_margins(chart)
     ws.add_chart(chart, position)
 
 
@@ -328,7 +352,7 @@ def add_overall_pct_chart(ws: Any, title: str, position: str) -> None:
     chart.x_axis.title = "Date"
     chart.y_axis.title = "Automation %"
     chart.height = 10
-    chart.width = 20
+    chart.width = 26
 
     # Data from column 6 (automation_pct)
     data = Reference(ws, min_col=6, min_row=1, max_col=6, max_row=ws.max_row)
@@ -362,6 +386,7 @@ def add_overall_pct_chart(ws: Any, title: str, position: str) -> None:
         marker_line.solidFill = color_fill
         chart.series[0].marker.graphicalProperties.line = marker_line
 
+    _apply_chart_margins(chart)
     ws.add_chart(chart, position)
 
 
@@ -460,7 +485,7 @@ def main() -> None:
     """Generate dashboards for both test plans."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    regression_csv = os.path.join(script_dir, "automation_stats.csv")
+    regression_csv = os.path.join(script_dir, "automation_stats_regression.csv")
     release_csv = os.path.join(script_dir, "automation_stats_release.csv")
 
     timestamp = datetime.now().strftime("%Y%m%d")

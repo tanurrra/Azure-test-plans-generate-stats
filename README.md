@@ -5,8 +5,9 @@ This tool connects to Azure DevOps to fetch test automation statistics for speci
 ## Prerequisites
 
 - Python 3.8+
-- Network access to `https://dev.azure.com/softwareone-pc`
+- Network access to `https://dev.azure.com/yourcompany-pc`
 - A Personal Access Token (PAT) with **Test Plans (Read)** and **Work Items (Read)** scope.
+- **Dependencies**: `pandas`, `openpyxl`, `matplotlib`, `requests`, `python-dotenv` (see `requirements.txt`).
 
 ## Setup
 
@@ -14,14 +15,28 @@ This tool connects to Azure DevOps to fetch test automation statistics for speci
    ```bash
    pip install -r requirements.txt
    ```
-   *(Or use a virtual environment if preferred)*
+   
+   **Recommended**: Use a virtual environment:
+   ```bash
+   # Create virtual environment
+   python -m venv .venv
+   
+   # Activate on Windows
+   .venv\Scripts\activate
+   
+   # Activate on Linux/Mac
+   source .venv/bin/activate
+   
+   # Install dependencies in virtual environment
+   pip install -r requirements.txt
+   ```
 
 2. **Configure Environment Variables**:
    Create a `.env` file (or set these in your shell/pipeline) with the following variables:
 
    ```dotenv
-   # Azure DevOps Organization (e.g. softwareone-pc)
-   ADO_ORG=softwareone-pc
+   # Azure DevOps Organization (e.g. yourcompany-pc)
+   ADO_ORG=yourcompany-pc
    
    # Project Name
    ADO_PROJECT=MPT
@@ -30,12 +45,12 @@ This tool connects to Azure DevOps to fetch test automation statistics for speci
    ADO_PAT=your_pat_here
    
    # Test Plan IDs to process
-   ADO_PLAN_ID_REGRESSION=230474
-   ADO_PLAN_ID_RELEASE=228942
+   ADO_PLAN_ID_REGRESSION=228942
+   ADO_PLAN_ID_RELEASE=230474
    
    # Output CSV Paths (absolute or relative)
    # Regression plan data will be written to this file
-   ADO_AUTOMATION_CSV_PATH=automation_stats.csv
+   ADO_AUTOMATION_CSV_PATH=automation_stats_regression.csv
    
    # Release plan data will be written to this separate file
    ADO_RELEASE_CSV_PATH=automation_stats_release.csv
@@ -53,6 +68,8 @@ Run the script directly with Python:
 python main.py
 ```
 
+**Note**: If using a virtual environment, activate it first (see Setup step 1).
+
 ### What it does
 
 1. Connects to the Azure DevOps API.
@@ -64,8 +81,8 @@ python main.py
    - Fetches the `Automation Status` for every test case.
    - Counts "Automated", "Planned", and "Not Automated".
 3. Appends results to separate CSV files:
-   - **Regression plan** (E2E - V5) data → `automation_stats.csv`
-   - **Release plan** (E2E - Release) data → `automation_stats_release.csv`
+   - **Regression plan** (E2E - Automations) data → `automation_stats_regression.csv`
+   - **Release plan** (E2E - V5) data → `automation_stats_release.csv`
    
    Each file contains columns:
    - `date`, `plan_id`, `plan_name`, `root_suite_id`, `root_suite_name`, `total_cases`, `automated`, `planned`, `not_automated`
@@ -89,6 +106,33 @@ Creates two Excel files (one per test plan) with multiple sheets:
 
 Files are named with timestamp: `dashboard_regression_YYYYMMDD.xlsx` and `dashboard_release_YYYYMMDD.xlsx`
 
+## Generating PNG Chart Images
+
+If you need standalone images (e.g., for Confluence or external reports):
+
+```bash
+python generate_chart_images.py
+```
+
+**Note**: If you're using a virtual environment, make sure it's activated first:
+```bash
+# Windows
+.venv\Scripts\activate
+
+# Linux/Mac
+source .venv/bin/activate
+```
+
+### What it generates
+
+Creates a `chart_images` directory containing PNGs for each test plan and chart type:
+- `regression_overall_progress.png`
+- `regression_overall_pct.png`
+- `regression_module_trends.png`
+- `regression_module_pct_trends.png`
+- `regression_current_status.png`
+- ...and similar files for `release` plan.
+
 ### Dashboard Features
 
 - **Automatic calculations**: Automation percentage per module and overall
@@ -105,10 +149,10 @@ To run this weekly, configure a scheduled task (Windows Task Scheduler) or a CI/
 
 ## CSV Output Format
 
-Each test plan writes to its own CSV file:
-- **automation_stats.csv** - Contains data for regression test plan (E2E - V5)
-- **automation_stats_release.csv** - Contains data for release test plan (E2E - Release)
+Each test plan writes to its own CSV file (configurable via environment variables):
+- **automation_stats_regression.csv** - Contains data for regression test plan (E2E - Automations)
+- **automation_stats_release.csv** - Contains data for release test plan (E2E - V5)
 
-| date       | plan_id | plan_name | root_suite_id | root_suite_name     | total_cases | automated | planned | not_automated |
-|------------|---------|-----------|---------------|---------------------|-------------|-----------|---------|---------------|
-| 2026-02-16 | 230474  | E2E - V5  | 230476        | Commerce            | 239         | 9         | 1       | 229           |
+| date       | plan_id | plan_name          | root_suite_id | root_suite_name     | total_cases | automated | planned | not_automated |
+|------------|---------|--------------------|--------------|--------------------|-------------|-----------|---------|---------------|
+| 2026-02-16 | 228942  | E2E - Automations  | 228944       | Commerce           | 239         | 9         | 1       | 229           |

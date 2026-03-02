@@ -65,7 +65,7 @@ def load_config() -> AzureConfig:
     """Load Azure DevOps configuration from environment variables.
 
     Environment variables:
-        ADO_ORG: Azure DevOps organization host, for example 'softwareone-pc'.
+        ADO_ORG: Azure DevOps organization host, for example 'yourcompany-pc'.
         ADO_PROJECT: Azure DevOps project name.
         ADO_PAT: Azure DevOps Personal Access Token.
         ADO_PLAN_ID_REGRESSION: Identifier of the regression test plan.

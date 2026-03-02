@@ -60,6 +60,18 @@ This document describes the automation agents and components used in the stats-a
 - Produces professional formatted reports with vibrant color schemes
 - Adds data labels showing percentages on charts
 
+### Chart Image Generator (`generate_chart_images.py`)
+- Reads the same CSV files used for dashboards
+- Generates high-quality PNG images of:
+  - Overall progress (stacked area)
+  - Overall automation % (line)
+  - Module trends (stacked column)
+  - Module % trends (lines)
+  - Current status (horizontal bar)
+- Uses `matplotlib` for rendering
+- Images are saved in `chart_images/` directory
+- Suitable for uploading to Confluence or other reports
+
 ## Scheduling
 
 To run this agent automatically:
@@ -82,8 +94,8 @@ schedules:
 
 ## Output
 
-- **File**: `automation_stats.csv` (for E2E - V5 regression test plan)
-- **File**: `automation_stats_release.csv` (for E2E - Release test plan)
+- **File**: `automation_stats_regression.csv` (for E2E - Automations test plan)
+- **File**: `automation_stats_release.csv` (for E2E - V5 test plan)
 - **Format**: One row per root suite per plan per run
 - **Columns**: date, plan_id, plan_name, root_suite_id, root_suite_name, total_cases, automated, planned, not_automated
 
