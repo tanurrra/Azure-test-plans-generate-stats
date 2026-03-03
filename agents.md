@@ -8,7 +8,7 @@ This document describes the automation agents and components used in the stats-a
 
 ### Test Stats Fetcher (`main.py`)
 
-**Purpose**: Fetches test automation statistics from Jira by running JQL queries and aggregates results into a CSV report grouped by Jira component.
+**Purpose**: Fetches test automation statistics from Jira by running JQL queries and aggregates results into a CSV report grouped by super-group (CloudiQ, Operations, Everything else).
 
 **Frequency**: Weekly (manual or scheduled)
 
@@ -17,8 +17,8 @@ This document describes the automation agents and components used in the stats-a
 **Responsibilities**:
 - Connect to Jira REST API using Basic authentication (e-mail + API token)
 - Execute JQL queries to retrieve test issues matching configured criteria
-- Group issues by Jira component
-- Count automation status per component (Automated / Planned / Not Automated)
+- Map tests to super-groups based on Jira components (CloudiQ, Operations, Everything else)
+- Count automation status per super-group (Automated / Planned / Not Automated)
 - Append results to CSV file with timestamp
 
 ## Components
@@ -30,11 +30,13 @@ This document describes the automation agents and components used in the stats-a
 - Parses component and automation status fields from issue responses
 
 ### Aggregation Engine (`aggregation.py`)
-- Groups fetched Jira test issues by component name
-- Issues belonging to multiple components are counted in each component
-- Issues with no component are grouped under "Unassigned"
-- Counts test cases by automation status (Automated / Planned / Not Automated)
-- Produces per-component statistics compatible with the existing CSV schema
+- Maps Jira test issues to one of three super-groups based on their components:
+  - **CloudiQ**: Cloud-iQx, Adobe, Aws, Control Panel
+  - **Operations**: Operations Center, Phoenix, Product and Prices (if not in CloudiQ)
+  - **Everything else**: All other components
+- Each test is counted exactly once in the highest priority super-group that matches
+- Counts test cases by automation status within each super-group (Automated / Planned / Not Automated)
+- Produces per-super-group statistics compatible with the existing CSV schema
 
 ### CSV Writer (`csv_writer.py`)
 - Manages output CSV files
@@ -129,9 +131,9 @@ schedules:
 ## Output
 
 - **File**: `automation_stats_regression.csv` (default)
-- **Format**: One row per Jira component per run
+- **Format**: One row per super-group per run (CloudiQ, Operations, Everything else)
 - **Columns**: `date`, `plan_id`, `plan_name`, `root_suite_id`, `root_suite_name`, `total_cases`, `automated`, `planned`, `not_automated`
-- `root_suite_name` = Jira component name (or "Unassigned")
+- `root_suite_name` = Super-group name (CloudiQ, Operations, or Everything else)
 - `plan_name` = value of `JIRA_QUERY_LABEL`
 
 ## Dashboards
@@ -148,9 +150,9 @@ Creates timestamped Excel files:
 Each dashboard includes 5 sheets:
 
 1. **Overall Progress** — stacked area + line chart of overall automation % over time
-2. **Module Trends** — stacked column chart of automated count per component over time
-3. **Module % Trends** — line chart of automation % per component over time
-4. **Current Status** — horizontal bar chart of the latest week by component
+2. **Module Trends** — stacked column chart of automated count per super-group over time
+3. **Module % Trends** — line chart of automation % per super-group over time
+4. **Current Status** — horizontal bar chart of the latest week by super-group
 5. **Raw Data** — complete dataset with calculated percentages
 
 ## Error Handling

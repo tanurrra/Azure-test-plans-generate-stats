@@ -1,4 +1,10 @@
-"""Aggregation of Jira test case statistics grouped by component."""
+"""Aggregation of Jira test case statistics grouped by super-group.
+
+Tests are mapped into one of three super-groups based on their Jira components:
+- CloudiQ: Cloud-iQx, Adobe, Aws, Control Panel
+- Operations: Operations Center, Phoenix, Product and Prices (if not in CloudiQ)
+- Everything else: All other components
+"""
 
 from __future__ import annotations
 
@@ -11,19 +17,52 @@ from jira_client import JiraClient, JiraTestCase
 
 _UNASSIGNED_COMPONENT = "Unassigned"
 
+# Super-group component mappings
+_CLOUDIQ_COMPONENTS = {"cloud-iqx", "adobe", "aws", "control panel"}
+_OPERATIONS_COMPONENTS = {"operations center", "phoenix", "product and prices"}
+
+
+def _map_to_super_group(components: List[str]) -> str:
+    """Map a list of Jira components to one of three super-groups.
+    
+    Mapping rules (priority order):
+    1. CloudiQ: Cloud-iQx, Adobe, Aws, Control Panel
+    2. Operations: Operations Center, Phoenix, Product and Prices (if not in CloudiQ)
+    3. Everything else: All other components
+    
+    Args:
+        components: List of Jira component names.
+        
+    Returns:
+        One of 'CloudiQ', 'Operations', or 'Everything else'.
+    """
+    # Normalize component names for case-insensitive matching
+    normalized_components = {c.strip().lower() for c in components}
+    
+    # Check CloudiQ first (highest priority)
+    if normalized_components & _CLOUDIQ_COMPONENTS:
+        return "CloudiQ"
+    
+    # Check Operations second
+    if normalized_components & _OPERATIONS_COMPONENTS:
+        return "Operations"
+    
+    # Everything else
+    return "Everything else"
+
 
 @dataclass
 class SuiteAggregation:
-    """Aggregated automation statistics for a single Jira component.
+    """Aggregated automation statistics for a single super-group.
 
     The field names intentionally mirror the original Azure DevOps terminology so
     that the CSV writer and chart-generation modules require no changes.
 
     Attributes:
         plan_id: Numeric identifier for the query/plan bucket (0 by default).
-        root_suite_id: Stable numeric identifier derived from the component name.
-        root_suite_name: Jira component name (or 'Unassigned' for issues with no component).
-        total_cases: Total number of unique test issues in this component.
+        root_suite_id: Stable numeric identifier derived from the super-group name.
+        root_suite_name: Super-group name (CloudiQ, Operations, or Everything else).
+        total_cases: Total number of unique test issues in this super-group.
         automated: Issues whose automation status matches the configured Automated value.
         planned: Issues whose automation status matches the configured Planned value.
         not_automated: Remaining issues (no status set, or any other value).
@@ -81,10 +120,12 @@ def aggregate_by_component(
     test_cases: List[JiraTestCase],
     plan_id: int = 0,
 ) -> List[SuiteAggregation]:
-    """Aggregate automation statistics grouped by Jira component.
+    """Aggregate automation statistics grouped by super-group.
 
-    Issues that belong to multiple components are counted once in each component.
-    Issues with no component are grouped under 'Unassigned'.
+    Tests are assigned to exactly one super-group based on their components:
+    - CloudiQ: Cloud-iQx, Adobe, Aws, Control Panel
+    - Operations: Operations Center, Phoenix, Product and Prices (if not in CloudiQ)
+    - Everything else: All other components
 
     Args:
         config: Jira configuration instance.
@@ -92,10 +133,10 @@ def aggregate_by_component(
         plan_id: Numeric plan identifier written to the CSV (default: 0).
 
     Returns:
-        List of SuiteAggregation instances sorted alphabetically by component name.
+        List of SuiteAggregation instances sorted alphabetically by super-group name.
     """
 
-    # buckets: component_name -> {automated, planned, not_automated, total}
+    # buckets: super_group_name -> {automated, planned, not_automated, total}
     buckets: Dict[str, Dict[str, int]] = {}
 
     excluded_lower = {s.strip().lower() for s in config.excluded_statuses}
@@ -107,21 +148,23 @@ def aggregate_by_component(
 
         components = tc.components if tc.components else [_UNASSIGNED_COMPONENT]
         classification = _classify_status(tc.automation_status, config)
+        
+        # Determine which super-group this test belongs to
+        super_group = _map_to_super_group(components)
 
-        for component in components:
-            if component not in buckets:
-                buckets[component] = {"automated": 0, "planned": 0, "not_automated": 0, "total": 0}
-            buckets[component][classification] += 1
-            buckets[component]["total"] += 1
+        if super_group not in buckets:
+            buckets[super_group] = {"automated": 0, "planned": 0, "not_automated": 0, "total": 0}
+        buckets[super_group][classification] += 1
+        buckets[super_group]["total"] += 1
 
     aggregations: List[SuiteAggregation] = []
-    for component_name in sorted(buckets):
-        counts = buckets[component_name]
+    for super_group_name in sorted(buckets):
+        counts = buckets[super_group_name]
         aggregations.append(
             SuiteAggregation(
                 plan_id=plan_id,
-                root_suite_id=_stable_id(component_name),
-                root_suite_name=component_name,
+                root_suite_id=_stable_id(super_group_name),
+                root_suite_name=super_group_name,
                 total_cases=counts["total"],
                 automated=counts["automated"],
                 planned=counts["planned"],

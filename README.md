@@ -1,6 +1,14 @@
 # Jira Test Automation Stats
 
-This tool connects to Jira to fetch test automation statistics using JQL queries, aggregates data by **Jira component**, and generates comprehensive Excel dashboards with visual trend analysis. Historical data is maintained in CSV files for week-over-week tracking.
+This tool connects to Jira to fetch test automation statistics using JQL queries, aggregates data by **super-group** (CloudiQ, Operations, Everything else), and generates comprehensive Excel dashboards with visual trend analysis. Historical data is maintained in CSV files for week-over-week tracking.
+
+## Super-Group Mapping
+
+Tests are automatically grouped based on their Jira components:
+
+- **CloudiQ**: Cloud-iQx, Adobe, Aws, Control Panel
+- **Operations**: Operations Center, Phoenix, Product and Prices (if not in CloudiQ)
+- **Everything else**: All other components not in CloudiQ or Operations
 
 ## Prerequisites
 

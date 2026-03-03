@@ -24,7 +24,7 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
-from aggregation import SuiteAggregation, _classify_status, _stable_id, _UNASSIGNED_COMPONENT
+from aggregation import SuiteAggregation, _classify_status, _stable_id, _UNASSIGNED_COMPONENT, _map_to_super_group
 from config import load_config, JiraConfig
 from csv_writer import append_aggregations_to_csv
 
@@ -312,7 +312,7 @@ def aggregate_snapshot(
     snapshot_date: date,
     plan_id: int = 0,
 ) -> List[SuiteAggregation]:
-    """Aggregate component statistics for a single historical snapshot date."""
+    """Aggregate super-group statistics for a single historical snapshot date."""
 
     excluded_lower = {s.strip().lower() for s in config.excluded_statuses}
     buckets: Dict[str, Dict[str, int]] = {}
@@ -328,12 +328,14 @@ def aggregate_snapshot(
 
         classification = _classify_status(raw_status, config)
         components = snap.components if snap.components else [_UNASSIGNED_COMPONENT]
+        
+        # Map components to super-group
+        super_group = _map_to_super_group(components)
 
-        for component in components:
-            if component not in buckets:
-                buckets[component] = {"automated": 0, "planned": 0, "not_automated": 0, "total": 0}
-            buckets[component][classification] += 1
-            buckets[component]["total"] += 1
+        if super_group not in buckets:
+            buckets[super_group] = {"automated": 0, "planned": 0, "not_automated": 0, "total": 0}
+        buckets[super_group][classification] += 1
+        buckets[super_group]["total"] += 1
 
     return [
         SuiteAggregation(
@@ -410,7 +412,7 @@ def run(
     for snap_date in dates:
         aggs = aggregate_snapshot(config, snapshots, snap_date, plan_id=0)
         append_aggregations_to_csv(query.csv_path, aggs, run_date=snap_date, plan_names=plan_names)
-        logging.info("  %s → %s component rows written.", snap_date, len(aggs))
+        logging.info("  %s → %s super-group rows written.", snap_date, len(aggs))
 
     logging.info("Backfill complete. CSV written to '%s'.", query.csv_path)
 
