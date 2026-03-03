@@ -1,20 +1,17 @@
-# Azure Test Plans Automation Stats
+# Jira Test Automation Stats
 
-This tool connects to Azure DevOps to fetch test automation statistics for specified Test Plans, aggregates data by "root" category (the top-level folders in the plan), and generates comprehensive Excel dashboards with visual trend analysis. Historical data is maintained in CSV files for week-over-week tracking.
+This tool connects to Jira to fetch test automation statistics using JQL queries, aggregates data by **Jira component**, and generates comprehensive Excel dashboards with visual trend analysis. Historical data is maintained in CSV files for week-over-week tracking.
 
 ## Prerequisites
 
 - Python 3.8+
-- Network access to `https://dev.azure.com/yourcompany-pc`
-- A Personal Access Token (PAT) with **Test Plans (Read)** and **Work Items (Read)** scope.
-- **Dependencies**: `pandas`, `openpyxl`, `matplotlib`, `requests`, `python-dotenv` (see `requirements.txt`).
+- Network access to your Jira instance (e.g., `https://crayon-group.atlassian.net`)
+- A Jira API token (generate at [https://id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens))
+- **Dependencies**: `pandas`, `openpyxl`, `matplotlib`, `requests`, `python-dotenv` (see `requirements.txt`)
 
 ## Setup
 
 1. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
    
    **Recommended**: Use a virtual environment:
    ```bash
@@ -32,64 +29,101 @@ This tool connects to Azure DevOps to fetch test automation statistics for speci
    ```
 
 2. **Configure Environment Variables**:
-   Create a `.env` file (or set these in your shell/pipeline) with the following variables:
+   
+   Copy `.env.example` to `.env` and fill in your values:
 
    ```dotenv
-   # Azure DevOps Organization (e.g. yourcompany-pc)
-   ADO_ORG=yourcompany-pc
+   # Base URL of your Jira Cloud instance (no trailing slash)
+   JIRA_URL=https://yourinstance.atlassian.net
    
-   # Project Name
-   ADO_PROJECT=MPT
+   # Jira user e-mail address used for Basic authentication
+   JIRA_EMAIL=your.name@company.com
    
-   # Personal Access Token
-   ADO_PAT=your_pat_here
+   # Jira API token (generate at https://id.atlassian.com/manage-profile/security/api-tokens)
+   JIRA_API_TOKEN=your_api_token_here
    
-   # Test Plan IDs to process
-   ADO_PLAN_ID_REGRESSION=228942
-   ADO_PLAN_ID_RELEASE=230474
+   # JQL query to select test issues
+   JIRA_JQL=Type = Test and labels in (Regression)
    
-   # Output CSV Paths (absolute or relative)
-   # Regression plan data will be written to this file
-   ADO_AUTOMATION_CSV_PATH=automation_stats_regression.csv
+   # Human-readable label for the query (used in logs and as plan_name in CSV)
+   JIRA_QUERY_LABEL=Regression
    
-   # Release plan data will be written to this separate file
-   ADO_RELEASE_CSV_PATH=automation_stats_release.csv
+   # Path to the output CSV file
+   JIRA_CSV_PATH=automation_stats_regression.csv
    
-   # (Optional) Custom Automation Status Field Name
-   # Default is "Custom.AutomationStatus"
-   # ADO_AUTOMATION_STATUS_FIELD=Custom.AutomationStatus
+   # Custom field name or ID that stores the automation status value
+   # Use "status" for the built-in status field, or "customfield_XXXXX" for custom fields
+   JIRA_AUTOMATION_STATUS_FIELD=status
+   
+   # Field value that counts as "Automated" (case-insensitive match)
+   JIRA_AUTOMATED_VALUE=Ready - Automated
+   
+   # Field value that counts as "Planned" (case-insensitive match)
+   JIRA_PLANNED_VALUE=Ready - Automation Candidate
+   
+   # Comma-separated status values to exclude entirely from counts
+   JIRA_EXCLUDED_STATUSES=Closed
+   ```
+
+   ### Finding the correct field ID
+   
+   If you need to find a custom field ID, query the Jira API:
+   ```bash
+   curl -u your.email@company.com:your_api_token \
+     "https://instance.atlassian.net/rest/api/3/field" | python -m json.tool | grep -i automation
    ```
 
 ## Usage
 
-Run the script directly with Python:
+There are two ways to populate the CSV with data:
+
+### Option 1: Backfill Historical Data (Recommended for first run)
+
+To generate weekly snapshots from a start date to today using Jira changelog history:
+
+```bash
+python backfill.py --from 2026-01-06
+```
+
+**What it does:**
+1. Fetches all matching test issues and their full status changelogs from Jira
+2. Reconstructs the status each issue had at the end of each Monday between the start date and today
+3. Generates weekly aggregated snapshots grouped by Jira component
+4. Writes all snapshots to the CSV (rewrites the file from scratch)
+
+**Options:**
+- `--from YYYY-MM-DD` - Start date (default: 2026-01-06)
+- `--to YYYY-MM-DD` - End date (default: today)
+
+**Note:** Backfill takes ~5-10 minutes for 1000+ issues due to per-issue changelog API calls.
+
+### Option 2: Incremental Update (For ongoing weekly runs)
+
+To append only today's snapshot to the existing CSV:
 
 ```bash
 python main.py
 ```
 
-**Note**: If using a virtual environment, activate it first (see Setup step 1).
+**What it does:**
+1. Connects to the Jira API
+2. Executes the configured JQL query to retrieve test issues
+3. Groups issues by Jira component (issues with multiple components are counted in each)
+4. Issues with no component are grouped under "Unassigned"
+5. Counts test cases by automation status:
+   - **Automated**: Matches `JIRA_AUTOMATED_VALUE`
+   - **Planned**: Matches `JIRA_PLANNED_VALUE`
+   - **Not Automated**: Everything else (excluding statuses in `JIRA_EXCLUDED_STATUSES`)
+6. Appends results to the CSV file with today's date
 
-### What it does
-
-1. Connects to the Azure DevOps API.
-2. For each configured Test Plan:
-   - Retrieves the full suite hierarchy.
-   - Identifies "Root Suites" (top-level categories).
-     > **Note**: If the Plan has a single root folder, the script currently aggregates by that single root. If you need breakdown by the *children* of the Plan Root, the logic in `aggregation.py` may need adjustment to select Level-1 children.
-   - Recursively collects all test cases under each category.
-   - Fetches the `Automation Status` for every test case.
-   - Counts "Automated", "Planned", and "Not Automated".
-3. Appends results to separate CSV files:
-   - **Regression plan** (E2E - Automations) data → `automation_stats_regression.csv`
-   - **Release plan** (E2E - V5) data → `automation_stats_release.csv`
-   
-   Each file contains columns:
-   - `date`, `plan_id`, `plan_name`, `root_suite_id`, `root_suite_name`, `total_cases`, `automated`, `planned`, `not_automated`
+**CSV columns:**
+- `date`, `plan_id`, `plan_name`, `root_suite_id`, `root_suite_name`, `total_cases`, `automated`, `planned`, `not_automated`
+- `root_suite_name` = Jira component name (or "Unassigned")
+- `plan_name` = value of `JIRA_QUERY_LABEL`
 
 ## Generating Excel Dashboards
 
-After collecting data, you can generate interactive Excel dashboards with charts:
+After collecting data, generate interactive Excel dashboards with charts:
 
 ```bash
 python generate_charts.py
@@ -97,14 +131,15 @@ python generate_charts.py
 
 ### What it generates
 
-Creates two Excel files (one per test plan) with multiple sheets:
-- **Overall Progress** - Stacked area chart showing automation growth over time + line chart tracking overall automation percentage
-- **Module Trends** - Stacked column chart tracking automated test counts per module
-- **Module % Trends** - Line chart showing automation percentage growth per module over time
-- **Current Status** - Horizontal bar chart comparing latest week's status by module with percentage labels
-- **Raw Data** - Complete dataset with calculated percentages
+Creates an Excel file with 5 sheets:
 
-Files are named with timestamp: `dashboard_regression_YYYYMMDD.xlsx` and `dashboard_release_YYYYMMDD.xlsx`
+1. **Overall Progress** — Stacked area chart showing automation growth over time + line chart tracking overall automation percentage
+2. **Module Trends** — Stacked column chart tracking automated test counts per component over time
+3. **Module % Trends** — Line chart showing automation percentage growth per component over time
+4. **Current Status** — Horizontal bar chart comparing latest week's status by component with percentage labels
+5. **Raw Data** — Complete dataset with calculated percentages
+
+File is named with timestamp: `dashboard_regression_YYYYMMDD.xlsx`
 
 ## Generating PNG Chart Images
 
@@ -114,45 +149,101 @@ If you need standalone images (e.g., for Confluence or external reports):
 python generate_chart_images.py
 ```
 
-**Note**: If you're using a virtual environment, make sure it's activated first:
-```bash
-# Windows
-.venv\Scripts\activate
-
-# Linux/Mac
-source .venv/bin/activate
-```
-
 ### What it generates
 
-Creates a `chart_images` directory containing PNGs for each test plan and chart type:
+Creates a `chart_images/` directory containing PNG files:
 - `regression_overall_progress.png`
 - `regression_overall_pct.png`
 - `regression_module_trends.png`
 - `regression_module_pct_trends.png`
 - `regression_current_status.png`
-- ...and similar files for `release` plan.
 
 ### Dashboard Features
 
-- **Automatic calculations**: Automation percentage per module and overall
+- **Automatic calculations**: Automation percentage per component and overall
 - **Professional formatting**: Styled headers, auto-sized columns, and vibrant color schemes
 - **Multiple visualizations**: Area charts, line charts with markers, and stacked bar charts
-- **Percentage tracking**: Dedicated charts showing % growth trends by module and overall
+- **Percentage tracking**: Dedicated charts showing % growth trends by component and overall
 - **Weekly trend analysis**: Track progress over time with clear axis labels and values
-- **Module comparison**: Identify high and low performing areas with visual indicators
+- **Component comparison**: Identify high and low performing areas with visual indicators
 - **Data labels**: Percentage values displayed on charts for easy reading
 
-### Scheduling
+## Scheduling
 
-To run this weekly, configure a scheduled task (Windows Task Scheduler) or a CI/CD pipeline (Azure DevOps Pipeline) to execute `python main.py` once a week.
+To run this weekly, configure a scheduled task or CI/CD pipeline to execute `python main.py` once a week.
+
+### Windows Task Scheduler
+```powershell
+schtasks /create /tn "JiraTestStats" /tr "C:\Path\To\python.exe C:\Path\To\main.py" /sc weekly /d MON /st 09:00
+```
+
+### Azure DevOps Pipeline
+```yaml
+schedules:
+- cron: "0 9 * * 1"
+  displayName: Weekly Monday 9am
+  branches:
+    include:
+    - main
+
+steps:
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.8'
+- script: |
+    pip install -r requirements.txt
+    python main.py
+  displayName: 'Fetch Jira stats'
+```
 
 ## CSV Output Format
 
-Each test plan writes to its own CSV file (configurable via environment variables):
-- **automation_stats_regression.csv** - Contains data for regression test plan (E2E - Automations)
-- **automation_stats_release.csv** - Contains data for release test plan (E2E - V5)
+The CSV file contains one row per Jira component per snapshot date:
 
-| date       | plan_id | plan_name          | root_suite_id | root_suite_name     | total_cases | automated | planned | not_automated |
-|------------|---------|--------------------|--------------|--------------------|-------------|-----------|---------|---------------|
-| 2026-02-16 | 228942  | E2E - Automations  | 228944       | Commerce           | 239         | 9         | 1       | 229           |
+## CSV Output Format
+
+The CSV file contains one row per Jira component per snapshot date:
+
+| date       | plan_id | plan_name  | root_suite_id | root_suite_name | total_cases | automated | planned | not_automated |
+|------------|---------|------------|---------------|-----------------|-------------|-----------|---------|---------------|
+| 2026-01-12 | 0       | Regression | 10828         | Cloud-iQx       | 419         | 235       | 47      | 137           |
+| 2026-01-12 | 0       | Regression | 10830         | Microsoft       | 161         | 85        | 8       | 68            |
+
+- **date**: Snapshot date (YYYY-MM-DD)
+- **plan_id**: Numeric identifier (0 by default for the primary query)
+- **plan_name**: Value of `JIRA_QUERY_LABEL`
+- **root_suite_id**: Stable numeric hash of the component name
+- **root_suite_name**: Jira component name (or "Unassigned" for issues with no component)
+- **total_cases**: Total test issues in this component for this snapshot (issues count once per component)
+- **automated**: Count matching `JIRA_AUTOMATED_VALUE`
+- **planned**: Count matching `JIRA_PLANNED_VALUE`
+- **not_automated**: Remaining count (excluding `JIRA_EXCLUDED_STATUSES`)
+
+## Architecture
+
+- **config.py** — Loads environment variables into `JiraConfig` data structure
+- **jira_client.py** — Handles Jira REST API v3 communication (search + changelog)
+- **aggregation.py** — Groups issues by component and counts by automation status
+- **csv_writer.py** — Appends aggregation results to CSV with timestamps
+- **main.py** — Main entry point for incremental updates (today's snapshot only)
+- **backfill.py** — Historical data backfill using changelog replay
+- **generate_charts.py** — Reads CSV and creates Excel dashboards
+- **generate_chart_images.py** — Reads CSV and exports PNG charts
+
+## Troubleshooting
+
+**Issue: "Invalid request payload" error**
+- The `/rest/api/3/search/jql` endpoint is strict. Ensure `JIRA_JQL` is valid JQL syntax.
+
+**Issue: Wrong automation counts**
+- Verify `JIRA_STATUS_FIELD` is correct (use `status` for built-in status, or `customfield_XXXXX` for custom fields)
+- Check that `JIRA_AUTOMATED_VALUE` and `JIRA_PLANNED_VALUE` match exactly (case-insensitive)
+- Verify `JIRA_EXCLUDED_STATUSES` contains statuses you want to skip
+
+**Issue: Components missing from output**
+- Issues with no component are grouped under "Unassigned"
+- Check that the Jira `components` field is populated on your test issues
+
+**Issue: Backfill is slow**
+- Normal — fetching 1000+ changelogs takes ~5-10 minutes
+- The script uses 10 concurrent threads; increasing beyond that may hit Jira rate limits

@@ -4,56 +4,77 @@ import logging
 from datetime import date
 from typing import List
 
-from aggregation import SuiteAggregation, aggregate_for_plan
-from azure_devops import AzureDevOpsClient
-from config import AzureConfig, load_config
+from aggregation import SuiteAggregation, aggregate_by_component
+from config import JiraConfig, JiraQueryConfig, load_config
 from csv_writer import append_aggregations_to_csv
+from jira_client import JiraClient
+
+
+def _process_query(
+    config: JiraConfig,
+    client: JiraClient,
+    query: JiraQueryConfig,
+    plan_id: int,
+) -> List[SuiteAggregation]:
+    """Fetch Jira test issues for one query configuration and aggregate them.
+
+    Args:
+        config: Jira configuration instance.
+        client: Jira API client.
+        query: Query configuration specifying the JQL and destination CSV.
+        plan_id: Numeric plan identifier written into aggregation rows.
+
+    Returns:
+        List of SuiteAggregation instances grouped by Jira component.
+    """
+
+    logging.info("Searching Jira with JQL: %s", query.jql)
+    test_cases = client.search_test_cases(query.jql)
+    logging.info("Fetched %s test issues for query '%s'.", len(test_cases), query.label)
+
+    aggregations = aggregate_by_component(config, test_cases, plan_id=plan_id)
+    logging.info(
+        "Query '%s': aggregated into %s component rows.",
+        query.label,
+        len(aggregations),
+    )
+    return aggregations
 
 
 def run() -> None:
-    """Execute aggregation for configured Azure DevOps test plans and write CSV output."""
+    """Fetch Jira test statistics, aggregate by component, and write CSV output."""
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     config = load_config()
 
-    logging.info("Starting aggregation for Azure DevOps project '%s'.", config.project)
-    client = AzureDevOpsClient(config)
+    logging.info("Starting Jira test statistics aggregation (Jira: %s).", config.jira_url)
+    client = JiraClient(config)
 
-    regression_aggregations: List[SuiteAggregation] = []
-    release_aggregations: List[SuiteAggregation] = []
-    plan_names: dict[int, str] = {}
-    
-    for plan_id in config.plan_ids:
+    for plan_id, query in enumerate(config.queries):
         try:
-            logging.info("Aggregating automation statistics for plan %s.", plan_id)
-            plan_name = client.get_plan_name(plan_id)
-            plan_names[plan_id] = plan_name
-            logging.info("Plan %s name: '%s'.", plan_id, plan_name)
-            plan_aggregations = aggregate_for_plan(config, client, plan_id)
-            logging.info("Plan %s: produced %s root suite rows.", plan_id, len(plan_aggregations))
-            
-            # Route aggregations to appropriate list based on plan type
-            if plan_id == config.regression_plan_id:
-                regression_aggregations.extend(plan_aggregations)
+            aggregations = _process_query(config, client, query, plan_id=plan_id)
+
+            if aggregations:
+                plan_names = {plan_id: query.label}
+                logging.info(
+                    "Appending %s rows to CSV at '%s'.",
+                    len(aggregations),
+                    query.csv_path,
+                )
+                append_aggregations_to_csv(
+                    query.csv_path,
+                    aggregations,
+                    run_date=date.today(),
+                    plan_names=plan_names,
+                )
             else:
-                release_aggregations.extend(plan_aggregations)
+                logging.warning(
+                    "No aggregations produced for query '%s'; CSV will not be updated.",
+                    query.label,
+                )
         except Exception:
-            logging.exception("Failed to aggregate statistics for plan %s.", plan_id)
-
-    # Write regression plan data to main CSV file
-    if regression_aggregations:
-        logging.info("Appending %s rows to regression CSV at '%s'.", len(regression_aggregations), config.csv_path)
-        append_aggregations_to_csv(config.csv_path, regression_aggregations, run_date=date.today(), plan_names=plan_names)
-    else:
-        logging.warning("No regression aggregations produced; regression CSV file will not be updated.")
-
-    # Write release plan data to separate CSV file
-    if release_aggregations:
-        logging.info("Appending %s rows to release CSV at '%s'.", len(release_aggregations), config.release_csv_path)
-        append_aggregations_to_csv(config.release_csv_path, release_aggregations, run_date=date.today(), plan_names=plan_names)
-    else:
-        logging.warning("No release aggregations produced; release CSV file will not be updated.")
+            logging.exception("Failed to process query '%s'.", query.label)
 
     logging.info("Aggregation and CSV update completed successfully.")
 

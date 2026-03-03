@@ -1,45 +1,51 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 
 from dotenv import load_dotenv
 
 
 @dataclass
-class AzureConfig:
-    """Azure DevOps connection and reporting configuration.
+class JiraQueryConfig:
+    """Configuration for a single Jira JQL query that produces one CSV output file.
 
     Attributes:
-        organization_url: Base Azure DevOps organization URL.
-        project: Azure DevOps project name.
-        personal_access_token: Personal Access Token with required permissions.
-        regression_plan_id: Identifier of the regression test plan.
-        release_plan_id: Identifier of the release test plan.
-        automation_status_field: Reference name of the Automation Status field.
-        csv_path: Absolute or relative path to the output CSV file for regression plan.
-        release_csv_path: Absolute or relative path to the output CSV file for release plan.
+        jql: JQL query string used to select test issues.
+        csv_path: Absolute or relative path to the output CSV file.
+        label: Human-readable label used in log messages and as plan_name in CSV rows.
     """
 
-    organization_url: str
-    project: str
-    personal_access_token: str
-    regression_plan_id: int
-    release_plan_id: int
-    automation_status_field: str
+    jql: str
     csv_path: str
-    release_csv_path: str
+    label: str
 
-    @property
-    def plan_ids(self) -> List[int]:
-        """Return all configured test plan identifiers.
 
-        Returns:
-            List of unique test plan identifiers.
-        """
+@dataclass
+class JiraConfig:
+    """Jira connection and reporting configuration.
 
-        return list({self.regression_plan_id, self.release_plan_id})
+    Attributes:
+        jira_url: Base Jira instance URL, e.g. 'https://your-org.atlassian.net'.
+        email: Jira user e-mail used for Basic authentication.
+        api_token: Jira API token used for Basic authentication.
+        automation_status_field: Jira field name or custom field ID that holds the
+            automation status value, e.g. 'customfield_10050'.
+            If empty, every test case is counted as not_automated.
+        automated_value: Field value that counts as Automated (case-insensitive).
+        planned_value: Field value that counts as Planned (case-insensitive).
+        queries: One or more JQL query configurations.
+    """
+
+    jira_url: str
+    email: str
+    api_token: str
+    automation_status_field: str
+    automated_value: str
+    planned_value: str
+    excluded_statuses: List[str] = field(default_factory=list)
+    queries: List[JiraQueryConfig] = field(default_factory=list)
 
 
 def _require_env(name: str) -> str:
@@ -61,56 +67,51 @@ def _require_env(name: str) -> str:
     return value
 
 
-def load_config() -> AzureConfig:
-    """Load Azure DevOps configuration from environment variables.
+def load_config() -> JiraConfig:
+    """Load Jira configuration from environment variables.
 
     Environment variables:
-        ADO_ORG: Azure DevOps organization host, for example 'yourcompany-pc'.
-        ADO_PROJECT: Azure DevOps project name.
-        ADO_PAT: Azure DevOps Personal Access Token.
-        ADO_PLAN_ID_REGRESSION: Identifier of the regression test plan.
-        ADO_PLAN_ID_RELEASE: Identifier of the release test plan.
-        ADO_AUTOMATION_STATUS_FIELD: Reference name of the Automation Status field.
-        ADO_AUTOMATION_CSV_PATH: Path to the CSV file for storing regression plan results.
-        ADO_RELEASE_CSV_PATH: Path to the CSV file for storing release plan results.
+        JIRA_URL: Base Jira instance URL, e.g. 'https://your-org.atlassian.net'.
+        JIRA_EMAIL: Jira user e-mail for authentication.
+        JIRA_API_TOKEN: Jira API token for authentication.
+        JIRA_JQL: JQL query to fetch test issues (primary query).
+        JIRA_CSV_PATH: Path to the CSV file for the primary query results.
+        JIRA_QUERY_LABEL: Human-readable label for the primary query (default: 'Regression').
+        JIRA_AUTOMATION_STATUS_FIELD: Custom field ID holding automation status
+            (default: 'customfield_10050').  Leave empty to disable status tracking.
+        JIRA_AUTOMATED_VALUE: Field value treated as Automated (default: 'Automated').
+        JIRA_PLANNED_VALUE: Field value treated as Planned (default: 'Planned').
+        JIRA_EXCLUDED_STATUSES: Comma-separated status values to exclude from counts entirely.
 
     Returns:
-        Loaded AzureConfig instance.
+        Loaded JiraConfig instance.
     """
 
     load_dotenv()
 
-    organization_host = _require_env("ADO_ORG")
-    project = _require_env("ADO_PROJECT")
-    pat = _require_env("ADO_PAT")
-    regression_plan_id_raw = _require_env("ADO_PLAN_ID_REGRESSION")
-    release_plan_id_raw = _require_env("ADO_PLAN_ID_RELEASE")
-    csv_path = _require_env("ADO_AUTOMATION_CSV_PATH")
-    release_csv_path = _require_env("ADO_RELEASE_CSV_PATH")
+    jira_url = _require_env("JIRA_URL").rstrip("/")
+    email = _require_env("JIRA_EMAIL")
+    api_token = _require_env("JIRA_API_TOKEN")
+    jql = _require_env("JIRA_JQL")
+    csv_path = _require_env("JIRA_CSV_PATH")
 
-    automation_status_field = os.getenv("ADO_AUTOMATION_STATUS_FIELD", "Custom.AutomationStatus").strip()
-    if not automation_status_field:
-        automation_status_field = "Custom.AutomationStatus"
+    query_label = os.getenv("JIRA_QUERY_LABEL", "Regression").strip() or "Regression"
+    automation_status_field = os.getenv("JIRA_AUTOMATION_STATUS_FIELD", "customfield_10050").strip()
+    automated_value = os.getenv("JIRA_AUTOMATED_VALUE", "Automated").strip() or "Automated"
+    planned_value = os.getenv("JIRA_PLANNED_VALUE", "Planned").strip() or "Planned"
 
-    try:
-        regression_plan_id = int(regression_plan_id_raw)
-    except ValueError as exc:
-        raise RuntimeError("ADO_PLAN_ID_REGRESSION must be an integer.") from exc
+    excluded_raw = os.getenv("JIRA_EXCLUDED_STATUSES", "").strip()
+    excluded_statuses = [s.strip() for s in excluded_raw.split(",") if s.strip()] if excluded_raw else []
 
-    try:
-        release_plan_id = int(release_plan_id_raw)
-    except ValueError as exc:
-        raise RuntimeError("ADO_PLAN_ID_RELEASE must be an integer.") from exc
+    primary_query = JiraQueryConfig(jql=jql, csv_path=csv_path, label=query_label)
 
-    organization_url = f"https://dev.azure.com/{organization_host}"
-
-    return AzureConfig(
-        organization_url=organization_url,
-        project=project,
-        personal_access_token=pat,
-        regression_plan_id=regression_plan_id,
-        release_plan_id=release_plan_id,
-        release_csv_path=release_csv_path,
+    return JiraConfig(
+        jira_url=jira_url,
+        email=email,
+        api_token=api_token,
         automation_status_field=automation_status_field,
-        csv_path=csv_path,
+        automated_value=automated_value,
+        planned_value=planned_value,
+        excluded_statuses=excluded_statuses,
+        queries=[primary_query],
     )

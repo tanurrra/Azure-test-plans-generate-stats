@@ -1,24 +1,32 @@
+"""Aggregation of Jira test case statistics grouped by component."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Mapping, Optional, Set
+from typing import Dict, List
 
-from azure_devops import AzureDevOpsClient, TestCaseReference, TestSuite
-from config import AzureConfig
+from config import JiraConfig
+from jira_client import JiraClient, JiraTestCase
+
+
+_UNASSIGNED_COMPONENT = "Unassigned"
 
 
 @dataclass
 class SuiteAggregation:
-    """Aggregated statistics for a root test suite.
+    """Aggregated automation statistics for a single Jira component.
+
+    The field names intentionally mirror the original Azure DevOps terminology so
+    that the CSV writer and chart-generation modules require no changes.
 
     Attributes:
-        plan_id: Identifier of the test plan.
-        root_suite_id: Identifier of the root test suite.
-        root_suite_name: Name of the root test suite.
-        total_cases: Total number of unique test cases under the root suite.
-        automated: Number of test cases with Automation Status equal to Automated.
-        planned: Number of test cases with Automation Status equal to Planned.
-        not_automated: Number of test cases without automation or explicitly Not Automated.
+        plan_id: Numeric identifier for the query/plan bucket (0 by default).
+        root_suite_id: Stable numeric identifier derived from the component name.
+        root_suite_name: Jira component name (or 'Unassigned' for issues with no component).
+        total_cases: Total number of unique test issues in this component.
+        automated: Issues whose automation status matches the configured Automated value.
+        planned: Issues whose automation status matches the configured Planned value.
+        not_automated: Remaining issues (no status set, or any other value).
     """
 
     plan_id: int
@@ -30,131 +38,95 @@ class SuiteAggregation:
     not_automated: int
 
 
-def _build_suite_children_index(suites: Iterable[TestSuite]) -> Dict[Optional[int], List[TestSuite]]:
-    """Construct an index of suites by parent identifier.
+def _stable_id(name: str) -> int:
+    """Return a stable, positive integer identifier derived from a string.
+
+    The value is consistent across runs but is NOT guaranteed to be unique for
+    all possible strings; collisions are acceptable here as the ID is only used
+    for the CSV and is not a database key.
 
     Args:
-        suites: Iterable of TestSuite instances.
+        name: Source string.
 
     Returns:
-        Mapping from parent_id to list of child suites.
+        Non-negative integer derived from the string.
     """
 
-    index: Dict[Optional[int], List[TestSuite]] = {}
-    for suite in suites:
-        index.setdefault(suite.parent_id, []).append(suite)
-    return index
+    return sum(idx * ord(ch) for idx, ch in enumerate(name, start=1)) % 1_000_000
 
 
-def _collect_descendant_suite_ids(
-    root_suite: TestSuite,
-    children_index: Mapping[Optional[int], List[TestSuite]],
-) -> Set[int]:
-    """Collect all descendant suite identifiers for a given root suite.
+def _classify_status(raw_status: str | None, config: JiraConfig) -> str:
+    """Map a raw automation status value to 'automated', 'planned', or 'not_automated'.
 
     Args:
-        root_suite: Root TestSuite instance.
-        children_index: Mapping from parent identifiers to child suites.
+        raw_status: Raw field value from Jira, or None.
+        config: Jira configuration providing the expected value strings.
 
     Returns:
-        Set of suite identifiers including the root suite itself.
+        One of 'automated', 'planned', or 'not_automated'.
     """
 
-    result: Set[int] = {root_suite.id}
-    stack: List[int] = [root_suite.id]
-    while stack:
-        current_id = stack.pop()
-        for child in children_index.get(current_id, []):
-            if child.id not in result:
-                result.add(child.id)
-                stack.append(child.id)
-    return result
+    if not raw_status:
+        return "not_automated"
+    normalized = raw_status.strip().lower()
+    if normalized == config.automated_value.strip().lower():
+        return "automated"
+    if normalized == config.planned_value.strip().lower():
+        return "planned"
+    return "not_automated"
 
 
-def _determine_root_suites(suites: Iterable[TestSuite]) -> List[TestSuite]:
-    """Determine root suites as suites without a parent suite.
+def aggregate_by_component(
+    config: JiraConfig,
+    test_cases: List[JiraTestCase],
+    plan_id: int = 0,
+) -> List[SuiteAggregation]:
+    """Aggregate automation statistics grouped by Jira component.
+
+    Issues that belong to multiple components are counted once in each component.
+    Issues with no component are grouped under 'Unassigned'.
 
     Args:
-        suites: Iterable of TestSuite instances.
+        config: Jira configuration instance.
+        test_cases: List of JiraTestCase instances to aggregate.
+        plan_id: Numeric plan identifier written to the CSV (default: 0).
 
     Returns:
-        List of root-level TestSuite instances.
+        List of SuiteAggregation instances sorted alphabetically by component name.
     """
 
-    return [suite for suite in suites if suite.parent_id is None]
+    # buckets: component_name -> {automated, planned, not_automated, total}
+    buckets: Dict[str, Dict[str, int]] = {}
 
+    excluded_lower = {s.strip().lower() for s in config.excluded_statuses}
 
-def aggregate_for_plan(config: AzureConfig, client: AzureDevOpsClient, plan_id: int) -> List[SuiteAggregation]:
-    """Aggregate automation statistics for all root suites in a plan.
+    for tc in test_cases:
+        # Skip issues whose status is in the excluded list
+        if tc.automation_status and tc.automation_status.strip().lower() in excluded_lower:
+            continue
 
-    Args:
-        config: Azure DevOps configuration instance.
-        client: Azure DevOps API client.
-        plan_id: Identifier of the test plan.
+        components = tc.components if tc.components else [_UNASSIGNED_COMPONENT]
+        classification = _classify_status(tc.automation_status, config)
 
-    Returns:
-        List of SuiteAggregation instances, one per root suite.
-    """
-
-    suites = client.list_suites_for_plan(plan_id)
-    children_index = _build_suite_children_index(suites)
-    absolute_roots = _determine_root_suites(suites)
-
-    # Heuristic: If there is exactly one root suite (the Plan root),
-    # but the user wants a breakdown by category (e.g. "Vendor", "Helpdesk"),
-    # we likely want to aggregate by the *children* of that single root.
-    if len(absolute_roots) == 1:
-        single_root = absolute_roots[0]
-        root_children = children_index.get(single_root.id, [])
-        if root_children:
-            reporting_roots = root_children
-        else:
-            reporting_roots = absolute_roots
-    else:
-        reporting_roots = absolute_roots
+        for component in components:
+            if component not in buckets:
+                buckets[component] = {"automated": 0, "planned": 0, "not_automated": 0, "total": 0}
+            buckets[component][classification] += 1
+            buckets[component]["total"] += 1
 
     aggregations: List[SuiteAggregation] = []
-
-    for root_suite in reporting_roots:
-        descendant_suite_ids = _collect_descendant_suite_ids(root_suite, children_index)
-        test_case_refs: List[TestCaseReference] = []
-        for suite_id in descendant_suite_ids:
-            test_case_refs.extend(client.list_test_cases_for_suite(plan_id, suite_id))
-
-        work_item_ids = {ref.work_item_id for ref in test_case_refs}
-        automation_map = client.get_automation_status_by_work_item(
-            work_item_ids=work_item_ids,
-            field_reference_name=config.automation_status_field,
+    for component_name in sorted(buckets):
+        counts = buckets[component_name]
+        aggregations.append(
+            SuiteAggregation(
+                plan_id=plan_id,
+                root_suite_id=_stable_id(component_name),
+                root_suite_name=component_name,
+                total_cases=counts["total"],
+                automated=counts["automated"],
+                planned=counts["planned"],
+                not_automated=counts["not_automated"],
+            )
         )
-
-        automated_count = 0
-        planned_count = 0
-        not_automated_count = 0
-
-        for work_item_id in work_item_ids:
-            raw_status = automation_map.get(work_item_id)
-            if raw_status is None:
-                not_automated_count += 1
-                continue
-            normalized = raw_status.strip().lower()
-            if normalized == "automated":
-                automated_count += 1
-            elif normalized == "planned":
-                planned_count += 1
-            elif normalized == "not automated":
-                not_automated_count += 1
-            else:
-                not_automated_count += 1
-
-        aggregation = SuiteAggregation(
-            plan_id=plan_id,
-            root_suite_id=root_suite.id,
-            root_suite_name=root_suite.name,
-            total_cases=len(work_item_ids),
-            automated=automated_count,
-            planned=planned_count,
-            not_automated=not_automated_count,
-        )
-        aggregations.append(aggregation)
 
     return aggregations
