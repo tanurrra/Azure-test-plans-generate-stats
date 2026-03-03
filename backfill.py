@@ -76,7 +76,13 @@ def _parse_jira_datetime(raw: str) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
-def fetch_issues_with_changelog(config: JiraConfig, jql: str) -> List[IssueSnapshot]:
+def fetch_issues_with_changelog(
+    config: JiraConfig,
+    jql: str,
+    workers: int = 10,
+    delay_seconds: float = 0.0,
+    retries: int = 3,
+) -> List[IssueSnapshot]:
     """Fetch all matching issues and their status changelogs.
 
     Issues are fetched via the paginated search endpoint, then each issue's
@@ -118,11 +124,17 @@ def fetch_issues_with_changelog(config: JiraConfig, jql: str) -> List[IssueSnaps
     # Fetch all changelogs concurrently
     def fetch_one(raw: dict) -> IssueSnapshot:
         issue_key = raw.get("key", raw.get("id"))
-        changelog = _fetch_full_changelog(config, headers, issue_key)
+        changelog = _fetch_full_changelog(
+            config,
+            headers,
+            issue_key,
+            delay_seconds=delay_seconds,
+            retries=retries,
+        )
         return _parse_issue_snapshot(raw, config, changelog)
 
     results: List[IssueSnapshot] = []
-    with ThreadPoolExecutor(max_workers=10) as pool:
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         futures = {pool.submit(fetch_one, raw): raw for raw in raw_issues}
         done = 0
         for future in as_completed(futures):
@@ -134,20 +146,48 @@ def fetch_issues_with_changelog(config: JiraConfig, jql: str) -> List[IssueSnaps
     return results
 
 
-def _fetch_full_changelog(config: JiraConfig, headers: dict, issue_key: str) -> List[ChangelogEntry]:
+def _fetch_full_changelog(
+    config: JiraConfig,
+    headers: dict,
+    issue_key: str,
+    delay_seconds: float = 0.0,
+    retries: int = 3,
+) -> List[ChangelogEntry]:
     """Fetch all changelog entries for an issue, filtered to status transitions."""
     base_url = f"{config.jira_url}/rest/api/3/issue/{issue_key}/changelog"
     entries: List[ChangelogEntry] = []
     start_at = 0
 
     while True:
-        resp = requests.get(
-            base_url, headers=headers,
-            params={"startAt": start_at, "maxResults": 100},
-            timeout=30,
-        )
-        if not resp.ok:
-            logging.warning("Could not fetch changelog for %s: %s", issue_key, resp.status_code)
+        resp = None
+        for attempt in range(retries + 1):
+            resp = requests.get(
+                base_url,
+                headers=headers,
+                params={"startAt": start_at, "maxResults": 100},
+                timeout=30,
+            )
+            if resp.ok:
+                break
+
+            status_code = resp.status_code
+            retry_after = resp.headers.get("Retry-After")
+            if status_code == 429 or status_code >= 500:
+                if attempt < retries:
+                    wait_seconds = float(retry_after) if retry_after else float(2 ** attempt)
+                    logging.warning(
+                        "Rate limited fetching %s (status %s). Retrying in %.1fs...",
+                        issue_key,
+                        status_code,
+                        wait_seconds,
+                    )
+                    time.sleep(wait_seconds)
+                    continue
+            logging.warning("Could not fetch changelog for %s: %s", issue_key, status_code)
+            resp = None
+            break
+
+        if resp is None or not resp.ok:
             break
 
         body = resp.json()
@@ -163,6 +203,8 @@ def _fetch_full_changelog(config: JiraConfig, headers: dict, issue_key: str) -> 
                     ))
 
         start_at += len(values)
+        if delay_seconds > 0:
+            time.sleep(delay_seconds)
         is_last = body.get("isLast", True)
         if is_last or not values:
             break
@@ -332,14 +374,26 @@ def weekly_mondays(start: date, end: date) -> List[date]:
 # Main
 # ---------------------------------------------------------------------------
 
-def run(start_date: date, end_date: date) -> None:
+def run(
+    start_date: date,
+    end_date: date,
+    workers: int,
+    delay_seconds: float,
+    retries: int,
+) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     config = load_config()
     query = config.queries[0]
     plan_names = {0: query.label}
 
-    snapshots = fetch_issues_with_changelog(config, query.jql)
+    snapshots = fetch_issues_with_changelog(
+        config,
+        query.jql,
+        workers=workers,
+        delay_seconds=delay_seconds,
+        retries=retries,
+    )
 
     dates = weekly_mondays(start_date, end_date)
     # Always include today even if it's not a Monday
@@ -367,9 +421,18 @@ if __name__ == "__main__":
                         help="Start date (YYYY-MM-DD). Defaults to 2026-01-06.")
     parser.add_argument("--to", dest="end", default=str(date.today()),
                         help="End date (YYYY-MM-DD). Defaults to today.")
+    parser.add_argument("--workers", type=int, default=10,
+                        help="Parallel changelog fetch workers (default: 10).")
+    parser.add_argument("--delay", type=float, default=0.0,
+                        help="Delay in seconds between changelog page requests (default: 0).")
+    parser.add_argument("--retries", type=int, default=3,
+                        help="Retry count for 429/5xx responses (default: 3).")
     args = parser.parse_args()
 
     run(
         start_date=date.fromisoformat(args.start),
         end_date=date.fromisoformat(args.end),
+        workers=args.workers,
+        delay_seconds=args.delay,
+        retries=args.retries,
     )
