@@ -27,12 +27,33 @@ COLORS_MODULES = [
     "#92D050",
 ]
 
+MAX_DATE_LABELS = 10
+
 
 def _fig_style(ax: plt.Axes) -> None:
     """Apply consistent style: left/bottom margin, grid."""
     ax.set_axisbelow(True)
     ax.grid(True, axis="both", alpha=0.3)
     plt.tight_layout()
+
+
+def _set_sampled_date_ticks(ax: plt.Axes, dates: list[str], max_labels: int = MAX_DATE_LABELS) -> None:
+    """Show a readable subset of date labels while keeping the latest date visible."""
+    if not dates:
+        return
+
+    x = np.arange(len(dates))
+    if len(dates) <= max_labels:
+        tick_positions = x
+    else:
+        step = int(np.ceil(len(dates) / max_labels))
+        tick_positions = np.arange(0, len(dates), step)
+        if tick_positions[-1] != len(dates) - 1:
+            tick_positions = np.append(tick_positions, len(dates) - 1)
+
+    tick_labels = [dates[idx] for idx in tick_positions]
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels(tick_labels, rotation=30, ha="right")
 
 
 def save_stacked_area(df_summary: object, out_path: str, title: str) -> None:
@@ -56,8 +77,7 @@ def save_stacked_area(df_summary: object, out_path: str, title: str) -> None:
         label="Not Automated",
         color=COLORS_AUTOMATED_PLANNED_NOT[2],
     )
-    ax.set_xticks(x)
-    ax.set_xticklabels(dates, rotation=45, ha="right")
+    _set_sampled_date_ticks(ax, dates)
     ax.set_ylabel("Number of Tests")
     ax.set_xlabel("Date")
     ax.set_title(title)
@@ -74,8 +94,7 @@ def save_overall_pct_line(df_summary: object, out_path: str, title: str) -> None
     pct = df_summary["automation_pct"].tolist()
     x = np.arange(len(dates))
     ax.plot(x, pct, color="#70AD47", marker="o", markersize=6, linewidth=2)
-    ax.set_xticks(x)
-    ax.set_xticklabels(dates, rotation=45, ha="right")
+    _set_sampled_date_ticks(ax, dates)
     ax.set_ylabel("Automation %")
     ax.set_xlabel("Date")
     ax.set_title(title)
@@ -98,8 +117,7 @@ def save_module_trends_stacked(df_trends: object, out_path: str, title: str) -> 
         vals = df_trends[col].values
         ax.bar(x, vals, width=width, bottom=bottom, label=col, color=colors[i])
         bottom = bottom + vals
-    ax.set_xticks(x)
-    ax.set_xticklabels(dates, rotation=45, ha="right")
+    _set_sampled_date_ticks(ax, dates)
     ax.set_ylabel("Automated Tests")
     ax.set_xlabel("Date")
     ax.set_title(title)
@@ -118,8 +136,7 @@ def save_module_pct_line(df_pct: object, out_path: str, title: str) -> None:
     for i, col in enumerate(module_cols):
         color = COLORS_MODULES[i % len(COLORS_MODULES)]
         ax.plot(x, df_pct[col].values, marker="o", markersize=4, label=col, color=color)
-    ax.set_xticks(x)
-    ax.set_xticklabels(dates, rotation=45, ha="right")
+    _set_sampled_date_ticks(ax, dates)
     ax.set_ylabel("Automation %")
     ax.set_xlabel("Date")
     ax.set_title(title)

@@ -131,6 +131,8 @@ python main.py
 
 ## Generating Excel Dashboards
 
+For a reusable prompt that refreshes historical data, the Excel dashboard, and PNG chart images, see [REPORT_GENERATION_PROMPT.md](REPORT_GENERATION_PROMPT.md).
+
 After collecting data, generate interactive Excel dashboards with charts:
 
 ```bash
